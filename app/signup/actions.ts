@@ -23,7 +23,7 @@ export async function startSignup(
   }
 
   try {
-    const { ok, status, data } = await agent<{
+    const { ok, status, data, raw } = await agent<{
       otp_id?: string;
       phone?: string;
       tenant_id?: string;
@@ -34,10 +34,19 @@ export async function startSignup(
       body: JSON.stringify({ email, phone, company_name: company }),
     });
 
-    console.log("[signup] agent response:", { status, ok, data });
+    console.log("[signup] agent response:", { status, ok, data, raw });
 
     if (!ok) {
-      return { error: data.message || data.error || `Agent HTTP ${status}` };
+      // If agent returned non-JSON (plain text error), surface it
+      if (raw) {
+        return { error: `Agent ${status}: ${raw.slice(0, 200)}` };
+      }
+      return {
+        error:
+          data.message ||
+          data.error ||
+          `Agent HTTP ${status}`,
+      };
     }
 
     if (!data.otp_id) {

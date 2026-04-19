@@ -9,26 +9,45 @@ const AGENT_URL =
 export async function agent<T = unknown>(
   path: string,
   init?: RequestInit & { token?: string }
-): Promise<{ ok: boolean; status: number; data: T }> {
+): Promise<{ ok: boolean; status: number; data: T; raw?: string }> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init?.headers as Record<string, string> | undefined),
   };
   if (init?.token) headers["Authorization"] = `Bearer ${init.token}`;
 
-  const res = await fetch(`${AGENT_URL}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  const url = `${AGENT_URL}${path}`;
+  console.log(`[agent] → ${init?.method ?? "GET"} ${url}`);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+  } catch (e) {
+    console.error(`[agent] fetch failed for ${url}:`, e);
+    throw e;
+  }
 
   const text = await res.text();
   let data: T;
+  let parseOk = true;
   try {
     data = JSON.parse(text) as T;
   } catch {
+    parseOk = false;
     data = text as unknown as T;
   }
 
-  return { ok: res.ok, status: res.status, data };
+  if (!res.ok) {
+    console.error(
+      `[agent] ← ${res.status} ${url} parsed=${parseOk} body=${text.slice(0, 500)}`
+    );
+  } else {
+    console.log(`[agent] ← ${res.status} ${url}`);
+  }
+
+  return { ok: res.ok, status: res.status, data, raw: parseOk ? undefined : text };
 }
