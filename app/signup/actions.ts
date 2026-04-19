@@ -22,22 +22,35 @@ export async function startSignup(
     return { error: "All fields are required" };
   }
 
-  const { ok, status, data } = await agent<{
-    otp_id?: string;
-    phone?: string;
-    tenant_id?: string;
-    error?: string;
-    message?: string;
-  }>("/api/v1/auth/signup", {
-    method: "POST",
-    body: JSON.stringify({ email, phone, company_name: company }),
-  });
+  try {
+    const { ok, status, data } = await agent<{
+      otp_id?: string;
+      phone?: string;
+      tenant_id?: string;
+      error?: string;
+      message?: string;
+    }>("/api/v1/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email, phone, company_name: company }),
+    });
 
-  if (!ok) {
-    return { error: data.message || data.error || `HTTP ${status}` };
+    console.log("[signup] agent response:", { status, ok, data });
+
+    if (!ok) {
+      return { error: data.message || data.error || `Agent HTTP ${status}` };
+    }
+
+    if (!data.otp_id) {
+      return {
+        error: "Missing otp_id. Raw: " + JSON.stringify(data).slice(0, 300),
+      };
+    }
+
+    return { otp_id: data.otp_id, phone: data.phone };
+  } catch (e) {
+    console.error("[signup] network error:", e);
+    return { error: "Network: " + (e as Error).message };
   }
-
-  return { otp_id: data.otp_id, phone: data.phone };
 }
 
 export async function verifyOtp(
