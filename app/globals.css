@@ -22,3 +22,54 @@ body {
 .glow {
   box-shadow: 0 0 40px rgba(14, 165, 233, 0.15);
 }
+
+/* Markdown rendering in chat messages */
+.markdown p { margin: 0.25rem 0; }
+.markdown p:first-child { margin-top: 0; }
+.markdown p:last-child { margin-bottom: 0; }
+.markdown strong { font-weight: 600; color: #fff; }
+.markdown em { font-style: italic; }
+.markdown ul, .markdown ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+.markdown ul { list-style: disc; }
+.markdown ol { list-style: decimal; }
+.markdown li { margin: 0.1rem 0; }
+.markdown code {
+  background: rgba(0, 0, 0, 0.3);
+  color: #67e8f9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+}
+.markdown pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+.markdown a {
+  color: #22d3ee;
+  text-decoration: underline;
+}
+.markdown a:hover {
+  text-decoration: none;
+}
+.markdown h1, .markdown h2, .markdown h3 {
+  font-weight: 600;
+  color: #fff;
+  margin: 0.75rem 0 0.25rem;
+}
+.markdown h1 { font-size: 1.25rem; }
+.markdown h2 { font-size: 1.1rem; }
+.markdown h3 { font-size: 1rem; }
+.markdown blockquote {
+  border-left: 3px solid #22d3ee;
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: #9ca3af;
+}

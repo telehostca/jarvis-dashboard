@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { Send, Bot, User } from "lucide-react";
 import { useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 
 export function JarvisChat() {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
@@ -54,7 +55,13 @@ export function JarvisChat() {
                   : "bg-white/5 text-gray-200"
               }`}
             >
-              <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+              {msg.role === "user" ? (
+                <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+              ) : (
+                <div className="markdown text-sm">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              )}
             </div>
             {msg.role === "user" && (
               <div className="w-8 h-8 rounded-full bg-white/10 text-gray-400 flex items-center justify-center shrink-0">
