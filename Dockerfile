@@ -3,6 +3,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Keep NODE_ENV=development for npm ci so devDeps (tailwind, typescript) install.
+# The build script itself sets NODE_ENV=production internally.
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -10,7 +12,10 @@ COPY package.json package-lock.json* ./
 RUN npm ci --include=dev --no-audit --no-fund
 
 COPY . .
-RUN npm run build
+
+# Force NODE_ENV=production during next build so it uses production React bundles.
+# (Coolify sometimes injects non-standard NODE_ENV values during build.)
+RUN NODE_ENV=production npm run build
 
 # ── Runtime stage ──
 FROM node:22-alpine
