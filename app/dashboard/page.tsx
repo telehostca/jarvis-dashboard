@@ -17,9 +17,34 @@ export default async function DashboardPage() {
   const session = await getSession(true);
   if (!session) return null; // redirected
 
-  const { data: info } = await agent<TenantInfo>("/api/v1/tenant/me", {
-    token: session.token,
-  });
+  const { ok, status, data: info, raw } = await agent<TenantInfo & { error?: string; message?: string }>(
+    "/api/v1/tenant/me",
+    { token: session.token }
+  );
+
+  if (!ok || !info?.tenant) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md w-full bg-white/5 border border-red-500/30 rounded-2xl p-8 text-center">
+          <h1 className="text-xl font-bold mb-2">Could not load dashboard</h1>
+          <p className="text-gray-400 text-sm mb-1">
+            The agent responded with HTTP {status}.
+          </p>
+          <p className="text-red-300 text-sm font-mono break-words mb-4">
+            {info?.message || info?.error || raw?.slice(0, 200) || "No details"}
+          </p>
+          <form action={signout}>
+            <button
+              type="submit"
+              className="bg-cyan-500 hover:bg-cyan-400 text-black text-sm font-medium px-4 py-2 rounded-lg"
+            >
+              Sign out and retry
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen">
