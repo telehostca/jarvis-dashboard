@@ -79,7 +79,15 @@ export default function SignupPage() {
 
               {state.error && (
                 <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
-                  {state.error}
+                  <p>{state.error}</p>
+                  {state.error.toLowerCase().includes("already registered") && (
+                    <Link
+                      href="/signin"
+                      className="inline-flex items-center gap-1 mt-2 text-cyan-400 hover:underline font-medium"
+                    >
+                      Go to sign in <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  )}
                 </div>
               )}
 
