@@ -34,7 +34,7 @@ Tagline: *"Your DevOps team on WhatsApp, 24/7"*.
 | Repo                          | Visibilidad | Stack                           | Rol                     |
 |-------------------------------|-------------|---------------------------------|-------------------------|
 | `telehostca/jarvis-dashboard` | Público     | Next.js 15 + Vercel AI SDK      | Frontend, landing, UI   |
-| `telehostca/jarvis-agent`     | **Privado** | Fastify + `@anthropic-ai/sdk`   | Backend AI + dispatcher |
+| `telehostca/jarvis-agent`     | **Privado** | Hono + Vercel AI SDK            | Backend AI + dispatcher |
 | `telehostca/jarvis-client-php`| Público     | Laravel 10/11/12, PHP ≥8.1      | SDK Laravel             |
 | `telehostca/jarvis-client-node`| Público    | TypeScript ESM, Node ≥18        | SDK Node                |
 
@@ -202,10 +202,17 @@ Session
 6. **OTP send/verify** — usa el mismo gateway WhatsApp para los códigos
 7. **Persistencia** — tenants, apps, recipients, members, sessions, otps, alerts, polls
 
-### 4.4 Stack confirmado por el usuario
-- **Fastify** como framework
-- **`@anthropic-ai/sdk`** directo (sin Claude Agent SDK)
-- Probablemente Node ≥18 + TypeScript
+### 4.4 Stack confirmado (verificado en código fuente)
+- **Hono** como framework HTTP (NO Fastify — el doc original asumió Fastify
+  basándose en una preferencia verbal del owner que no se materializó en código)
+- **Vercel AI SDK** (`ai`, `@ai-sdk/anthropic`, `@ai-sdk/groq`) — NO `@anthropic-ai/sdk` directo
+- Node ≥18 + TypeScript
+
+**Corrección histórica:** la sesión inicial de análisis (que generó este doc) no
+tuvo acceso al repo `jarvis-agent`. El stack se documentó a partir de afirmaciones
+verbales. Cuando una segunda sesión obtuvo acceso al código real, confirmó Hono +
+Vercel AI SDK. Esta sección y el diagrama de §8 fueron actualizados para reflejar
+la realidad del repo.
 
 ### 4.5 Brechas (gap analysis)
 **Sin acceso al código no podemos confirmar si tiene/no tiene:**
@@ -433,7 +440,7 @@ Cada closure en try/catch → en error, valor del key se reemplaza por `{error: 
              │ /api/v1/{auth,tenant}/*                         │
              ▼                                                 │
 ┌──────────────────────────────────────────────────────────────┴───────┐
-│   jarvis-agent (Fastify + @anthropic-ai/sdk — agent.telehost.net)    │
+│   jarvis-agent (Hono + Vercel AI SDK — agent.telehost.net)           │
 │   ════════════════════════════════════════════════════                │
 │   ⚠️  REPO PRIVADO — implementación no auditada                       │
 │                                                                       │
