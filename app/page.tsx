@@ -167,7 +167,7 @@ export default function LandingPage() {
           <p className="mt-2">
             <a href="https://github.com/telehostca/jarvis-client-php" className="hover:text-white mx-2">Laravel SDK</a>
             <a href="https://github.com/telehostca/jarvis-client-node" className="hover:text-white mx-2">Node SDK</a>
-            <a href="https://github.com/telehostca/jarvis-agent" className="hover:text-white mx-2">Agent</a>
+            <a href="mailto:info@telehost.net" className="hover:text-white mx-2">Self-hosted (contact)</a>
           </p>
         </div>
       </footer>
