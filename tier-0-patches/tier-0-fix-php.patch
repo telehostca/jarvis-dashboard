@@ -1,0 +1,170 @@
+From 0b2011c8041e96122a71c92384308912a8afccfe Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 2 May 2026 06:43:23 +0000
+Subject: [PATCH] fix: emit 'down' status when all metrics fail; defensive
+ config() reads
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The HTTP controller already mapped status 'down' → HTTP 503, but
+buildPayload() never produced that value. Anyone whose entire monitoring
+broke would see HTTP 200 with all metrics returning {error}, which
+defeats the point of having a 'down' state.
+
+Status priority is now:
+  - 'down'     : metrics defined and ALL returned errors → HTTP 503
+  - 'degraded' : at least one critical alert            → HTTP 200
+  - 'healthy'  : default                                 → HTTP 200
+
+Also: config() reads are now defensive — they fall back to defaults if
+the Laravel container is not booted (e.g. unit tests without Testbench).
+This unblocks the existing test suite that uses raw PHPUnit\Framework\TestCase.
+
+Test coverage:
+  - test_status_down_when_all_metrics_fail
+  - test_status_not_down_when_only_some_metrics_fail
+  - test_status_healthy_when_no_metrics_defined
+  - test_down_takes_priority_over_critical_alert
+
+All 9 tests pass (5 original + 4 new).
+
+https://claude.ai/code/session_01AKSt2UxSEZaSz9sTLxCeaB
+---
+ src/JarvisManager.php       | 42 ++++++++++++++++++++++++++---
+ tests/JarvisManagerTest.php | 53 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 92 insertions(+), 3 deletions(-)
+
+diff --git a/src/JarvisManager.php b/src/JarvisManager.php
+index d02eb71..4eb128d 100644
+--- a/src/JarvisManager.php
++++ b/src/JarvisManager.php
+@@ -75,6 +75,12 @@ class JarvisManager
+     /**
+      * Build the full Jarvis health payload.
+      *
++     * Status priority:
++     *   - 'down'     : metrics defined and ALL of them returned errors (app cannot
++     *                  compute its own state — total breakdown). HTTP 503.
++     *   - 'degraded' : at least one alert with severity 'critical'. HTTP 200.
++     *   - 'healthy'  : default. HTTP 200.
++     *
+      * @return array<string, mixed>
+      */
+     public function buildPayload(): array
+@@ -87,17 +93,47 @@ class JarvisManager
+             fn ($a) => is_array($a) && ($a['severity'] ?? '') === 'critical'
+         );
+ 
++        $allMetricsFailed = ! empty($this->metrics)
++            && collect($metrics)->every(
++                fn ($v) => is_array($v) && array_key_exists('error', $v)
++            );
++
++        $status = match (true) {
++            $allMetricsFailed => 'down',
++            $hasCriticalAlert => 'degraded',
++            default => 'healthy',
++        };
++
+         return [
+-            'app' => $this->appName ?? config('app.name', 'Unknown'),
+-            'version' => config('jarvis.app_version', '1.0'),
++            'app' => $this->appName ?? $this->readConfig('app.name', 'Unknown'),
++            'version' => $this->readConfig('jarvis.app_version', '1.0'),
+             'timestamp' => Carbon::now()->toIso8601String(),
+-            'status' => $hasCriticalAlert ? 'degraded' : 'healthy',
++            'status' => $status,
+             'metrics' => $metrics,
+             'alerts' => $alerts,
+             'custom' => $custom,
+         ];
+     }
+ 
++    /**
++     * Defensively read a Laravel config key. Returns $default when the Laravel
++     * container is not booted (e.g. during framework-less unit tests) or when
++     * the config helper is unavailable. In production with Laravel, behaves
++     * exactly like calling config() directly.
++     */
++    protected function readConfig(string $key, string $default): string
++    {
++        if (! function_exists('config')) {
++            return $default;
++        }
++        try {
++            $value = config($key, $default);
++            return is_scalar($value) ? (string) $value : $default;
++        } catch (\Throwable) {
++            return $default;
++        }
++    }
++
+     /**
+      * Resolve every registered closure, isolating errors.
+      *
+diff --git a/tests/JarvisManagerTest.php b/tests/JarvisManagerTest.php
+index 3f7a0bd..cf72d9b 100644
+--- a/tests/JarvisManagerTest.php
++++ b/tests/JarvisManagerTest.php
+@@ -84,4 +84,57 @@ class JarvisManagerTest extends TestCase
+         $this->assertCount(1, $payload['alerts']);
+         $this->assertEquals(['version' => '1.0'], $payload['custom']['meta']);
+     }
++
++    public function test_status_down_when_all_metrics_fail(): void
++    {
++        $manager = new JarvisManager(
++            metrics: [
++                'a' => fn () => throw new \RuntimeException('boom 1'),
++                'b' => fn () => throw new \RuntimeException('boom 2'),
++            ]
++        );
++
++        $payload = $manager->buildPayload();
++
++        $this->assertEquals('down', $payload['status']);
++    }
++
++    public function test_status_not_down_when_only_some_metrics_fail(): void
++    {
++        $manager = new JarvisManager(
++            metrics: [
++                'ok' => fn () => 42,
++                'fails' => fn () => throw new \RuntimeException('partial'),
++            ]
++        );
++
++        $payload = $manager->buildPayload();
++
++        $this->assertEquals('healthy', $payload['status']);
++    }
++
++    public function test_status_healthy_when_no_metrics_defined(): void
++    {
++        $manager = new JarvisManager();
++
++        $payload = $manager->buildPayload();
++
++        $this->assertEquals('healthy', $payload['status']);
++    }
++
++    public function test_down_takes_priority_over_critical_alert(): void
++    {
++        $manager = new JarvisManager(
++            metrics: [
++                'a' => fn () => throw new \RuntimeException('all dead'),
++            ],
++            alerts: [
++                'crit' => fn () => ['severity' => 'critical', 'message' => 'fire'],
++            ]
++        );
++
++        $payload = $manager->buildPayload();
++
++        $this->assertEquals('down', $payload['status']);
++    }
+ }
+-- 
+2.43.0
+

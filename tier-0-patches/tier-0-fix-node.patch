@@ -1,0 +1,226 @@
+From 4229f40af7c69188f008d74832441a0f2367c5fb Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 2 May 2026 06:43:34 +0000
+Subject: [PATCH] fix: emit 'down' status when all metrics fail; parallelize
+ alerts resolution
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two fixes that pair the Node SDK with the PHP one (same wire contract):
+
+1. The 'down' status is now emitted when metrics are defined AND every
+   one returned an error. The express/fastify/hono adapters already
+   mapped 'down' → HTTP 503, but buildPayload() never produced that
+   value, leaving the 503 branch as dead code.
+
+   Status priority:
+     - "down"     : metrics defined and ALL returned errors → HTTP 503
+     - "degraded" : at least one alert with severity "critical" → 200
+     - "healthy"  : default → 200
+
+2. Alerts now resolve in parallel via Promise.all (parity with metrics
+   and custom resolution). Declaration order is still preserved in the
+   output array.
+
+Test coverage added:
+  - status is 'down' when all metrics fail
+  - status is not 'down' when only some metrics fail
+  - status is 'healthy' when no metrics defined
+  - 'down' takes priority over critical alert
+  - alerts preserve declaration order even when run in parallel
+
+All 11 tests pass (6 original + 5 new). TypeScript strict-mode clean.
+
+https://claude.ai/code/session_01AKSt2UxSEZaSz9sTLxCeaB
+---
+ src/manager.test.ts | 75 +++++++++++++++++++++++++++++++++++++++++++++
+ src/manager.ts      | 67 +++++++++++++++++++++++++++++-----------
+ 2 files changed, 124 insertions(+), 18 deletions(-)
+
+diff --git a/src/manager.test.ts b/src/manager.test.ts
+index 40ad90a..a03b438 100644
+--- a/src/manager.test.ts
++++ b/src/manager.test.ts
+@@ -89,4 +89,79 @@ describe("JarvisManager", () => {
+       error: expect.stringContaining("timed out"),
+     });
+   });
++
++  it("status is 'down' when all metrics fail", async () => {
++    const m = new JarvisManager({
++      metrics: {
++        a: async () => {
++          throw new Error("boom 1");
++        },
++        b: async () => {
++          throw new Error("boom 2");
++        },
++      },
++    });
++
++    const payload = await m.buildPayload();
++
++    expect(payload.status).toBe("down");
++  });
++
++  it("status is not 'down' when only some metrics fail", async () => {
++    const m = new JarvisManager({
++      metrics: {
++        ok: async () => 42,
++        fails: async () => {
++          throw new Error("partial");
++        },
++      },
++    });
++
++    const payload = await m.buildPayload();
++
++    expect(payload.status).toBe("healthy");
++  });
++
++  it("status is 'healthy' when no metrics defined", async () => {
++    const m = new JarvisManager();
++
++    const payload = await m.buildPayload();
++
++    expect(payload.status).toBe("healthy");
++  });
++
++  it("'down' takes priority over critical alert", async () => {
++    const m = new JarvisManager({
++      metrics: {
++        a: async () => {
++          throw new Error("all dead");
++        },
++      },
++      alerts: {
++        crit: async () => ({ severity: "critical", message: "fire" }),
++      },
++    });
++
++    const payload = await m.buildPayload();
++
++    expect(payload.status).toBe("down");
++  });
++
++  it("alerts preserve declaration order even when run in parallel", async () => {
++    const m = new JarvisManager({
++      alerts: {
++        slow: async () => {
++          await new Promise((r) => setTimeout(r, 50));
++          return { severity: "warning" as const, message: "slow first" };
++        },
++        fast: async () => ({ severity: "info" as const, message: "fast second" }),
++      },
++    });
++
++    const payload = await m.buildPayload();
++
++    expect(payload.alerts).toHaveLength(2);
++    expect(payload.alerts[0]?.message).toBe("slow first");
++    expect(payload.alerts[1]?.message).toBe("fast second");
++  });
+ });
+diff --git a/src/manager.ts b/src/manager.ts
+index f158e03..1bacbbe 100644
+--- a/src/manager.ts
++++ b/src/manager.ts
+@@ -73,6 +73,13 @@ export class JarvisManager {
+     return this;
+   }
+ 
++  /**
++   * Status priority:
++   *   - "down"     : metrics defined and ALL of them returned errors (app cannot
++   *                  compute its own state — total breakdown). Adapter maps to HTTP 503.
++   *   - "degraded" : at least one alert with severity "critical". HTTP 200.
++   *   - "healthy"  : default. HTTP 200.
++   */
+   async buildPayload(): Promise<JarvisPayload> {
+     const [metrics, alerts, custom] = await Promise.all([
+       this.resolveAll(this.metrics),
+@@ -82,11 +89,24 @@ export class JarvisManager {
+ 
+     const hasCritical = alerts.some((a) => a.severity === "critical");
+ 
++    const definedMetricsCount = Object.keys(this.metrics).length;
++    const allMetricsFailed =
++      definedMetricsCount > 0 &&
++      Object.values(metrics).every(
++        (v) => v !== null && typeof v === "object" && "error" in (v as object)
++      );
++
++    const status: "healthy" | "degraded" | "down" = allMetricsFailed
++      ? "down"
++      : hasCritical
++        ? "degraded"
++        : "healthy";
++
+     return {
+       app: this.appName,
+       version: this.appVersion,
+       timestamp: new Date().toISOString(),
+-      status: hasCritical ? "degraded" : "healthy",
++      status,
+       metrics,
+       alerts,
+       custom,
+@@ -110,26 +130,37 @@ export class JarvisManager {
+     return Object.fromEntries(results);
+   }
+ 
++  /**
++   * Alerts run in parallel (parity with metrics/custom resolution).
++   * Order in the output array matches declaration order.
++   */
+   private async resolveAlerts(): Promise<Alert[]> {
+     const entries = Object.entries(this.alerts);
+-    const out: Alert[] = [];
+-    for (const [key, fn] of entries) {
+-      try {
+-        const result = await this.withTimeout(fn(), this.timeoutMs);
+-        if (result && typeof result === "object" && "severity" in result && "message" in result) {
+-          out.push({
+-            severity: (result as Alert).severity,
+-            message: String((result as Alert).message),
+-          });
++    const results = await Promise.all(
++      entries.map(async ([key, fn]): Promise<Alert | null> => {
++        try {
++          const result = await this.withTimeout(fn(), this.timeoutMs);
++          if (
++            result &&
++            typeof result === "object" &&
++            "severity" in result &&
++            "message" in result
++          ) {
++            return {
++              severity: (result as Alert).severity,
++              message: String((result as Alert).message),
++            };
++          }
++          return null;
++        } catch (e) {
++          return {
++            severity: "warning",
++            message: `Alert '${key}' failed: ${this.truncate((e as Error).message)}`,
++          };
+         }
+-      } catch (e) {
+-        out.push({
+-          severity: "warning",
+-          message: `Alert '${key}' failed: ${this.truncate((e as Error).message)}`,
+-        });
+-      }
+-    }
+-    return out;
++      })
++    );
++    return results.filter((a): a is Alert => a !== null);
+   }
+ 
+   private async withTimeout<T>(p: T | Promise<T>, ms: number): Promise<T> {
+-- 
+2.43.0
+
