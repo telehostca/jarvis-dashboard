@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/session";
 import { agent } from "@/lib/api";
-import { Bot, LogOut, AppWindow, Users, Bell, Settings2, Copy, CheckCircle2, XCircle } from "lucide-react";
+import { Bot, LogOut, AppWindow, Users, Bell, GitPullRequest, FileBarChart2 } from "lucide-react";
 import Link from "next/link";
 import { signout } from "@/lib/session";
 
@@ -76,7 +76,27 @@ export default async function DashboardPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-10">
         <h1 className="text-3xl font-bold mb-2">Welcome back, {info.tenant.name}</h1>
-        <p className="text-gray-400 mb-10">Manage your apps, alerts, and team.</p>
+        <p className="text-gray-400 mb-6">Manage your apps, alerts, and team.</p>
+
+        {/* Quick links */}
+        <div className="flex flex-wrap gap-2 mb-10">
+          <Link
+            href="/dashboard/auto-fixes"
+            className="inline-flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/30 rounded-full px-4 py-1.5 text-sm transition"
+          >
+            <GitPullRequest className="w-4 h-4 text-cyan-400" />
+            <span>Auto-fixes</span>
+            <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-300 rounded-full">beta</span>
+          </Link>
+          <Link
+            href="/dashboard/reports"
+            className="inline-flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/30 rounded-full px-4 py-1.5 text-sm transition"
+          >
+            <FileBarChart2 className="w-4 h-4 text-cyan-400" />
+            <span>Weekly reports</span>
+            <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-300 rounded-full">beta</span>
+          </Link>
+        </div>
 
         {/* Usage summary */}
         <div className="grid md:grid-cols-3 gap-4 mb-10">
