@@ -1,5 +1,6 @@
-import { streamText } from "ai";
+import { streamText, type LanguageModelV1 } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import type { NextRequest } from "next/server";
 
 /**
@@ -29,12 +30,37 @@ Rules for this demo:
 - NEVER make up numbers about "their system" — you don't have access to any real data yet
 - Encourage them to sign up to connect their real apps`;
 
+// The dashboard manages its own LLM key. Prefer DeepSeek-V3 (the TeleHost stack),
+// then OpenRouter, then Anthropic — whichever key is configured here.
+function demoModel(): LanguageModelV1 | null {
+  if (process.env.DEEPSEEK_API_KEY) {
+    return createOpenAI({
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: "https://api.deepseek.com",
+      compatibility: "compatible",
+    }).chat("deepseek-chat");
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return createOpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1",
+      compatibility: "compatible",
+    }).chat("deepseek/deepseek-chat");
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    return anthropic("claude-haiku-4-5-20251001");
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("[api/chat] ANTHROPIC_API_KEY is not set");
+  const model = demoModel();
+  if (!model) {
+    console.error("[api/chat] no LLM key configured");
     return new Response(
       JSON.stringify({
-        error: "Chat demo no configurado: falta ANTHROPIC_API_KEY en el servidor.",
+        error:
+          "Chat demo no configurado: falta una API key de LLM (DEEPSEEK_API_KEY, OPENROUTER_API_KEY o ANTHROPIC_API_KEY).",
       }),
       { status: 503, headers: { "Content-Type": "application/json" } }
     );
@@ -44,7 +70,7 @@ export async function POST(req: NextRequest) {
     const { messages } = await req.json();
 
     const result = streamText({
-      model: anthropic("claude-haiku-4-5-20251001"),
+      model,
       system: DEMO_SYSTEM_PROMPT,
       messages,
       temperature: 0.3,

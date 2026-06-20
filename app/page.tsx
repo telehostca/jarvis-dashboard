@@ -94,7 +94,7 @@ export default function LandingPage() {
       <section className="max-w-3xl mx-auto px-6 py-12">
         <h2 className="text-3xl font-bold text-center mb-2">Try it live</h2>
         <p className="text-center text-gray-400 mb-8">
-          Ask Jarvis anything. Powered by Claude Haiku 4.5.
+          Ask Jarvis anything. Powered by DeepSeek-V3.
         </p>
         <JarvisChat />
       </section>
