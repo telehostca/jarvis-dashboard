@@ -30,18 +30,44 @@ Rules for this demo:
 - Encourage them to sign up to connect their real apps`;
 
 export async function POST(req: NextRequest) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("[api/chat] ANTHROPIC_API_KEY is not set");
+    return new Response(
+      JSON.stringify({
+        error: "Chat demo no configurado: falta ANTHROPIC_API_KEY en el servidor.",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   try {
     const { messages } = await req.json();
 
     const result = streamText({
-      model: anthropic("claude-haiku-4-5"),
+      model: anthropic("claude-haiku-4-5-20251001"),
       system: DEMO_SYSTEM_PROMPT,
       messages,
       temperature: 0.3,
       maxTokens: 500,
+      // API/auth/credit errors surface during streaming (after this returns),
+      // so the route try/catch can't see them — log them here instead.
+      onError: ({ error }) => {
+        console.error("[api/chat] stream error:", error);
+      },
     });
 
-    return result.toDataStreamResponse();
+    // Without getErrorMessage the AI SDK masks the cause as "An error occurred",
+    // which is why the demo failed silently. Surface a useful message instead.
+    return result.toDataStreamResponse({
+      getErrorMessage: (error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error("[api/chat] surfaced error:", msg);
+        if (/authentication|401|api[_-]?key|credit|quota|billing/i.test(msg)) {
+          return "El servicio de IA rechazó la credencial o no tiene saldo. Revisá ANTHROPIC_API_KEY.";
+        }
+        return `No pude responder: ${msg.slice(0, 160)}`;
+      },
+    });
   } catch (e) {
     return new Response(
       JSON.stringify({ error: (e as Error).message }),

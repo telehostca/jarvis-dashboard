@@ -6,9 +6,11 @@ import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
 export function JarvisChat() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: "/api/chat",
-  });
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error, reload } =
+    useChat({
+      api: "/api/chat",
+      onError: (err) => console.error("[jarvis-chat] request failed:", err),
+    });
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +84,27 @@ export function JarvisChat() {
                 <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex gap-3">
+            <div className="w-8 h-8 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-2xl px-4 py-2 text-sm">
+              No pude responder ahora mismo.
+              {error.message ? (
+                <span className="opacity-80"> ({error.message})</span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => reload()}
+                className="ml-2 underline hover:text-red-200"
+              >
+                Reintentar
+              </button>
             </div>
           </div>
         )}
