@@ -1,9 +1,60 @@
 import { getSession } from "@/lib/session";
+import { agent } from "@/lib/api";
+import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bot, FileBarChart2, Calendar } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  FileBarChart2,
+  Calendar,
+  Users,
+  Send,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 
-export default async function ReportsPage() {
-  await getSession(true);
+async function sendTestReport() {
+  "use server";
+  const session = await getSession(true);
+  if (!session) return;
+
+  const { ok, data } = await agent<{
+    ok?: boolean;
+    recipients_sent?: number;
+    message?: string;
+    error?: string;
+  }>("/api/v1/tenant/reports/weekly/test", {
+    method: "POST",
+    token: session.token,
+    body: "{}",
+  });
+
+  if (!ok || !data.ok) {
+    redirect(
+      `/dashboard/reports?error=${encodeURIComponent(
+        data.message ?? data.error ?? "No se pudo enviar el reporte"
+      )}`
+    );
+  }
+  redirect(`/dashboard/reports?sent=${data.recipients_sent ?? 0}`);
+}
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sent?: string; error?: string }>;
+}) {
+  const session = await getSession(true);
+  if (!session) return null;
+  const params = await searchParams;
+
+  const { ok, data } = await agent<{ recipients?: string[]; apps?: unknown[] }>(
+    "/api/v1/tenant/me",
+    { token: session.token }
+  );
+  const recipients = ok ? data.recipients ?? [] : [];
+  const appsCount = ok ? data.apps?.length ?? 0 : 0;
+  const canSend = recipients.length > 0 && appsCount > 0;
 
   return (
     <main className="min-h-screen">
@@ -16,8 +67,8 @@ export default async function ReportsPage() {
             <Bot className="w-5 h-5 text-white" />
           </div>
           <span className="font-semibold">Weekly reports</span>
-          <span className="text-xs px-2 py-0.5 bg-yellow-500/10 text-yellow-300 rounded-full ml-2">
-            beta
+          <span className="text-xs px-2 py-0.5 bg-green-500/10 text-green-300 rounded-full ml-2">
+            activo
           </span>
         </div>
       </nav>
@@ -27,23 +78,75 @@ export default async function ReportsPage() {
           <FileBarChart2 className="w-7 h-7 text-cyan-400" />
           <h1 className="text-3xl font-bold">Weekly reports</h1>
         </div>
-        <p className="text-gray-400 mb-10">
-          Health summary for all your apps, generated every Sunday at 9am and
-          sent to your WhatsApp.
+        <p className="text-gray-400 mb-8">
+          Cada domingo Jarvis envía a tu WhatsApp un resumen de la semana: estado
+          de tus apps, alertas nuevas/resueltas y la tendencia.
         </p>
 
-        <div className="bg-white/5 border border-white/10 border-dashed rounded-xl p-10 text-center">
-          <Calendar className="w-10 h-10 text-cyan-400 mx-auto mb-3" />
-          <h2 className="text-xl font-semibold mb-2">Coming soon</h2>
-          <p className="text-gray-400 mb-4 max-w-lg mx-auto">
-            Every Sunday Jarvis sends a summary to your WhatsApp: top issues
-            of the week, trends across your apps, and refactor suggestions
-            based on recurring patterns.
-          </p>
-          <p className="text-xs text-gray-500">
-            Requires at least 7 days of monitoring data. Available on Pro+ plans.
-          </p>
+        {params.sent !== undefined && (
+          <div className="mb-6 flex items-center gap-2 bg-green-500/10 border border-green-500/30 text-green-300 text-sm rounded-lg p-3">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Reporte de prueba enviado a {params.sent} destinatario(s). Revisa tu WhatsApp.
+          </div>
+        )}
+        {params.error && (
+          <div className="mb-6 flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {params.error}
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-3 gap-4 mb-8">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <Calendar className="w-5 h-5 text-cyan-400 mb-2" />
+            <div className="text-sm text-gray-400">Programado</div>
+            <div className="font-semibold">Domingos 9:00 (VET)</div>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <Users className="w-5 h-5 text-cyan-400 mb-2" />
+            <div className="text-sm text-gray-400">Destinatarios</div>
+            <div className="font-semibold">{recipients.length}</div>
+          </div>
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <FileBarChart2 className="w-5 h-5 text-cyan-400 mb-2" />
+            <div className="text-sm text-gray-400">Apps monitoreadas</div>
+            <div className="font-semibold">{appsCount}</div>
+          </div>
         </div>
+
+        {recipients.length > 0 && (
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 mb-8">
+            <div className="text-sm text-gray-400 mb-3">El reporte se envía a:</div>
+            <div className="flex flex-wrap gap-2">
+              {recipients.map((phone) => (
+                <span
+                  key={phone}
+                  className="text-sm font-mono bg-black/30 border border-white/10 rounded-full px-3 py-1"
+                >
+                  +{phone}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <form action={sendTestReport}>
+          <button
+            type="submit"
+            disabled={!canSend}
+            className="inline-flex items-center gap-2 bg-cyan-500 hover:bg-cyan-400 disabled:bg-gray-700 disabled:cursor-not-allowed text-black font-medium px-5 py-3 rounded-lg transition"
+          >
+            <Send className="w-4 h-4" />
+            Enviar reporte de prueba ahora
+          </button>
+        </form>
+        {!canSend && (
+          <p className="text-xs text-gray-500 mt-3">
+            {appsCount === 0
+              ? "Registra al menos una app para recibir el reporte."
+              : "Agrega al menos un destinatario para recibir el reporte."}
+          </p>
+        )}
       </div>
     </main>
   );
